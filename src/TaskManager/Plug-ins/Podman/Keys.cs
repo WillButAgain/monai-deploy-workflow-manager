@@ -19,7 +19,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
     internal static class Keys
     {
         /// <summary>
-        /// Key for the endpoint where the Docker server is running.
+        /// Key for the endpoint where the Podman server is running.
         /// </summary>
         public static readonly string BaseUrl = "server_url";
 
@@ -34,7 +34,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
         public static readonly string EntryPoint = "entrypoint";
 
         /// <summary>
-        /// Key for specifying the user to the container. Same as -u argument for docker run.
+        /// Key for specifying the user to the container. Same as -u argument for podman run.
         /// </summary>
         public static readonly string User = "user";
 
@@ -59,7 +59,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
         public static readonly string TemporaryStorageContainerPath = "temp_storage_container_path";
 
         /// <summary>
-        /// Prefix for envrionment variables.
+        /// Prefix for environment variables.
         /// </summary>
         public static readonly string EnvironmentVariableKeyPrefix = "env_";
 
@@ -79,7 +79,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
         public static readonly string DefaultGpuDevice = "nvidia.com/gpu=all";
 
         /// <summary>
-        /// Required arguments to run the Docker workflow.
+        /// Required arguments to run the Podman workflow.
         /// </summary>
         public static readonly IReadOnlyList<string> RequiredParameters =
             new List<string> {

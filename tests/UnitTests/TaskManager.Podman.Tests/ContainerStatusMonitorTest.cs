@@ -124,6 +124,32 @@ namespace TaskManager.Podman.Tests
             _messageBrokerPublisherService.Verify(p => p.Publish(It.IsAny<string>(), It.IsAny<Monai.Deploy.Messaging.Messages.Message>()), Times.Once());
         }
 
+        [Fact(DisplayName = "Start - when upload fails expect callback not to be published")]
+        public async Task Start_WhenUploadFails_ExpectCallbackNotPublished()
+        {
+            var files = new List<string>() { "/taskmanagerpath/output/b.dcm" };
+            CreateFiles(files);
+            var outputVolumeMounts = new List<ContainerVolumeMount>() { new ContainerVolumeMount(new Storage { Bucket = "bucket", RelativeRootPath = "/svc" }, "/containerpath", "/hostpath", "/taskmanagerpath/output") };
+            var monitor = new ContainerStatusMonitor(_serviceScopeFactory.Object, _logger.Object, _fileSystem, _options);
+            var taskDispatchEvent = GenerateTaskDispatchEventWithValidArguments();
+
+            _storageService.Setup(p => p.PutObjectAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new Exception("upload error"));
+            _podmanClient.Setup(p => p.Containers.InspectContainerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ContainerInspectResponse
+                {
+                    State = new ContainerState
+                    {
+                        Status = Strings.DockerStatusExited,
+                        FinishedAt = DateTime.MinValue.ToString("s")
+                    }
+                });
+
+            await Assert.ThrowsAsync<Exception>(() => monitor.Start(taskDispatchEvent, TimeSpan.FromSeconds(3), "container", null!, outputVolumeMounts, CancellationToken.None));
+
+            _messageBrokerPublisherService.Verify(p => p.Publish(It.IsAny<string>(), It.IsAny<Monai.Deploy.Messaging.Messages.Message>()), Times.Never());
+        }
+
         [Fact(DisplayName = "Start - when called expect to upload artifacts and send callback event")]
         public async Task Start_WhenCalled_ExpectToUploadArtifactsAndSendCallbackEvent()
         {

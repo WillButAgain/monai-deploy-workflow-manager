@@ -234,9 +234,19 @@ namespace TaskManager.Podman.Tests
             var runner = new PodmanPlugin(_serviceScopeFactory.Object, _logger.Object, message);
             var result = await runner.ExecuteTask(CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext);
 
+            // Allow the background monitor task to run and fault.
+            await Task.Delay(200);
+
             Assert.Equal(TaskExecutionStatus.Accepted, result.Status);
             Assert.Equal(FailureReason.None, result.FailureReason);
             Assert.Empty(result.Errors);
+            _containerStatusMonitor.Verify(m => m.Start(
+                It.IsAny<TaskDispatchEvent>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<string>(),
+                It.IsAny<ContainerVolumeMount>(),
+                It.IsAny<IReadOnlyList<ContainerVolumeMount>>(),
+                It.IsAny<CancellationToken>()), Times.Once());
             runner.Dispose();
         }
 
@@ -371,6 +381,34 @@ namespace TaskManager.Podman.Tests
             Assert.Equal(String.Empty, result.Errors);
 
             runner.Dispose();
+        }
+
+        [Fact(DisplayName = "GetStatus - when container is exited with non-zero exit code expect failure status")]
+        public async Task GetStatus_WhenContainerIsExitedWithNonZeroExitCode_ExpectFailureStatus()
+        {
+            _podmanClient.Setup(p => p.Containers.InspectContainerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ContainerInspectResponse
+                {
+                    State = new ContainerState
+                    {
+                        Status = Strings.DockerStatusExited,
+                        FinishedAt = DateTime.MinValue.ToString("s"),
+                        ExitCode = 100
+                    }
+                });
+
+            var message = GenerateTaskDispatchEventWithValidArguments();
+
+            var runner = new PodmanPlugin(_serviceScopeFactory.Object, _logger.Object, message);
+            var result = await runner.GetStatus("identity", new TaskCallbackEvent(), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext);
+
+            Assert.Equal(TaskExecutionStatus.Failed, result.Status);
+            Assert.Equal(FailureReason.Unknown, result.FailureReason);
+            Assert.Equal($"Exit code=100. Status={Strings.DockerStatusExited}.", result.Errors);
+
+            _podmanClient.Verify(p => p.Containers.InspectContainerAsync(
+                It.Is<string>(p => p.Equals("identity", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<CancellationToken>()), Times.AtLeastOnce());
         }
 
         [Fact(DisplayName = "GetStatus - when contianer status is unknown expect failure status")]

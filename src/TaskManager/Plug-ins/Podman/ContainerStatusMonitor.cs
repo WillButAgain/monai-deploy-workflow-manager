@@ -84,6 +84,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
             var pollingPeriod = TimeSpan.FromSeconds(1);
 
             var timeToRetry = (int)containerTimeout.TotalSeconds;
+            var completed = false;
             while (timeToRetry-- > 0)
             {
                 try
@@ -92,22 +93,43 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
 
                     if (IsContainerCompleted(response.State))
                     {
-                        await UploadOutputArtifacts(intermediateVolumeMount, outputVolumeMounts, cancellationToken).ConfigureAwait(false);
-                        await SendCallbackMessage(taskDispatchEvent, containerId).ConfigureAwait(false);
-                        return;
+                        completed = true;
+                        break;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.ErrorMonitoringContainerStatus(containerId, ex);
                 }
-                finally
-                {
-                    await Task.Delay(pollingPeriod, cancellationToken).ConfigureAwait(false);
-                }
+
+                await Task.Delay(pollingPeriod, cancellationToken).ConfigureAwait(false);
             }
 
-            _logger.TimedOutMonitoringContainerStatus(containerId);
+            if (completed)
+            {
+                try
+                {
+                    await UploadOutputArtifacts(intermediateVolumeMount, outputVolumeMounts, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.ErrorMonitoringContainerStatus(containerId, ex);
+                    throw;
+                }
+
+                try
+                {
+                    await SendCallbackMessage(taskDispatchEvent, containerId).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.ErrorMonitoringContainerStatus(containerId, ex);
+                }
+            }
+            else
+            {
+                _logger.TimedOutMonitoringContainerStatus(containerId);
+            }
         }
 
         internal static bool IsContainerCompleted(ContainerState state)
@@ -161,8 +183,13 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
             {
                 try
                 {
-                    var objectName = file.Replace(artifactsPath, string.Empty).TrimStart('/');
-                    objectName = _fileSystem.Path.Combine(destination.RelativeRootPath, objectName);
+                    var relativePart = file.StartsWith(artifactsPath, StringComparison.Ordinal)
+                        ? file.Substring(artifactsPath.Length)
+                        : file;
+                    relativePart = relativePart.TrimStart('/');
+                    var objectName = string.IsNullOrEmpty(destination.RelativeRootPath)
+                        ? relativePart
+                        : destination.RelativeRootPath.TrimEnd('/') + "/" + relativePart;
                     _logger.UploadingFile(file, destination.Bucket, objectName);
                     if (!contentTypeProvider.TryGetContentType(file, out var contentType))
                     {
@@ -175,6 +202,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                 catch (Exception ex)
                 {
                     _logger.ErrorUploadingFile(file, ex);
+                    throw;
                 }
             }
         }

@@ -38,16 +38,16 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman.Logging
         [LoggerMessage(EventId = 1005, Level = LogLevel.Information, Message = "Podman container terminated: container Id={containerId}.")]
         public static partial void TerminatedContainer(this ILogger logger, string containerId);
 
-        [LoggerMessage(EventId = 1006, Level = LogLevel.Information, Message = "Input volume mapping host=={hostPath}, container={containerPath}.")]
-        public static partial void DockerInputMapped(this ILogger logger, string hostPath, string containerPath);
+        [LoggerMessage(EventId = 1006, Level = LogLevel.Information, Message = "Input volume mapping host={hostPath}, container={containerPath}.")]
+        public static partial void PodmanInputMapped(this ILogger logger, string hostPath, string containerPath);
 
-        [LoggerMessage(EventId = 1007, Level = LogLevel.Information, Message = "Output volume mapping host=={hostPath}, container={containerPath}.")]
-        public static partial void DockerOutputMapped(this ILogger logger, string hostPath, string containerPath);
+        [LoggerMessage(EventId = 1007, Level = LogLevel.Information, Message = "Output volume mapping host={hostPath}, container={containerPath}.")]
+        public static partial void PodmanOutputMapped(this ILogger logger, string hostPath, string containerPath);
 
-        [LoggerMessage(EventId = 1008, Level = LogLevel.Information, Message = "Environment variabled added {key}={value}.")]
-        public static partial void DockerEnvironmentVariableAdded(this ILogger logger, string key, string value);
+        [LoggerMessage(EventId = 1008, Level = LogLevel.Information, Message = "Environment variable added {key}.")]
+        public static partial void PodmanEnvironmentVariableAdded(this ILogger logger, string key);
 
-        [LoggerMessage(EventId = 1009, Level = LogLevel.Error, Message = "Error retreiving status from container {identity}.")]
+        [LoggerMessage(EventId = 1009, Level = LogLevel.Error, Message = "Error retrieving status from container {identity}.")]
         public static partial void ErrorGettingStatusFromDocker(this ILogger logger, string identity, Exception ex);
 
         [LoggerMessage(EventId = 1010, Level = LogLevel.Debug, Message = "Downloading artifact {source} to {target}.")]
@@ -62,8 +62,8 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman.Logging
         [LoggerMessage(EventId = 1013, Level = LogLevel.Warning, Message = "No output volumes configured for the task.")]
         public static partial void NoOutputVolumesConfigured(this ILogger logger);
 
-        [LoggerMessage(EventId = 10014, Level = LogLevel.Information, Message = "Intermediate volume mapping host=={hostPath}, container={containerPath}.")]
-        public static partial void DockerIntermediateVolumeMapped(this ILogger logger, string hostPath, string containerPath);
+        [LoggerMessage(EventId = 1014, Level = LogLevel.Information, Message = "Intermediate volume mapping host={hostPath}, container={containerPath}.")]
+        public static partial void PodmanIntermediateVolumeMapped(this ILogger logger, string hostPath, string containerPath);
 
         [LoggerMessage(EventId = 1015, Level = LogLevel.Error, Message = "Error generating volume mounts.")]
         public static partial void ErrorGeneratingVolumeMounts(this ILogger logger, Exception exception);
@@ -114,6 +114,6 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman.Logging
         public static partial void IntermediateVolumeMountAdded(this ILogger logger, string hostPath, string containerPath);
 
         [LoggerMessage(EventId = 1031, Level = LogLevel.Error, Message = "Error setting directory {path} with permission {user}.")]
-        public static partial void ErrorSettingDirectoryPermission(this ILogger logger, string path, string user);
+        public static partial void ErrorSettingDirectoryPermission(this ILogger logger, Exception exception, string path, string user);
     }
 }

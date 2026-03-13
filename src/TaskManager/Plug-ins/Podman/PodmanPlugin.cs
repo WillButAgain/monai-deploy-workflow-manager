@@ -191,10 +191,13 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
             try
             {
                 var monitor = _scope.ServiceProvider.GetService<IContainerStatusMonitor>() ?? throw new ServiceNotFoundException(nameof(IContainerStatusMonitor));
-                _ = Task.Run(async () =>
+                var monitorTask = Task.Run(async () =>
                 {
-                    await monitor.Start(Event, _containerTimeout, containerId, intermediateVolumeMount, outputVolumeMounts, cancellationToken);
+                    await monitor.Start(Event, _containerTimeout, containerId, intermediateVolumeMount, outputVolumeMounts, CancellationToken.None);
                 });
+                _ = monitorTask.ContinueWith(
+                    t => _logger.ErrorLaunchingContainerMonitor(containerId, t.Exception!.GetBaseException()),
+                    TaskContinuationOptions.OnlyOnFaulted);
             }
             catch (Exception exception)
             {
@@ -244,10 +247,32 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                 var stats = GetExecutuionStats(response);
                 if (ContainerStatusMonitor.IsContainerCompleted(response.State))
                 {
+                    if (response.State.OOMKilled || response.State.Dead)
+                    {
+                        return new ExecutionStatus
+                        {
+                            Status = TaskExecutionStatus.Failed,
+                            FailureReason = FailureReason.ExternalServiceError,
+                            Errors = $"Exit code={response.State.ExitCode}",
+                            Stats = stats
+                        };
+                    }
+
+                    if (response.State.ExitCode == 0)
+                    {
+                        return new ExecutionStatus
+                        {
+                            Status = TaskExecutionStatus.Succeeded,
+                            FailureReason = FailureReason.None,
+                            Stats = stats
+                        };
+                    }
+
                     return new ExecutionStatus
                     {
-                        Status = TaskExecutionStatus.Succeeded,
-                        FailureReason = FailureReason.None,
+                        Status = TaskExecutionStatus.Failed,
+                        FailureReason = FailureReason.Unknown,
+                        Errors = $"Exit code={response.State.ExitCode}. Status={response.State.Status}.",
                         Stats = stats
                     };
                 }
@@ -334,7 +359,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                     Source = input.HostPath,
                     Options = new List<string> { "rbind", "ro" }
                 });
-                _logger.DockerInputMapped(input.HostPath, input.ContainerPath);
+                _logger.PodmanInputMapped(input.HostPath, input.ContainerPath);
             }
 
             foreach (var output in outputs)
@@ -346,7 +371,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                     Source = output.HostPath,
                     Options = new List<string> { "rbind", "rw" }
                 });
-                _logger.DockerOutputMapped(output.HostPath, output.ContainerPath);
+                _logger.PodmanOutputMapped(output.HostPath, output.ContainerPath);
             }
 
             if (intermediateVolumeMount is not null)
@@ -358,7 +383,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                     Source = intermediateVolumeMount.HostPath,
                     Options = new List<string> { "rbind", "rw" }
                 });
-                _logger.DockerIntermediateVolumeMapped(intermediateVolumeMount.HostPath, intermediateVolumeMount.ContainerPath);
+                _logger.PodmanIntermediateVolumeMapped(intermediateVolumeMount.HostPath, intermediateVolumeMount.ContainerPath);
             }
 
             var envvars = new Dictionary<string, string>();
@@ -369,7 +394,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                 {
                     var envVarKey = key.Replace(Keys.EnvironmentVariableKeyPrefix, string.Empty);
                     envvars[envVarKey] = Event.TaskPluginArguments[key];
-                    _logger.DockerEnvironmentVariableAdded(envVarKey, Event.TaskPluginArguments[key]);
+                    _logger.PodmanEnvironmentVariableAdded(envVarKey);
                 }
             }
 
@@ -449,9 +474,10 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
                     Directory.CreateDirectory(fileDirectory!);
 
                     _logger.DownloadingArtifactFromStorageService(obj.Filename, filePath);
-                    using var stream = await storageService.GetObjectAsync(input.Bucket, obj.FilePath, cancellationToken).ConfigureAwait(false) as MemoryStream;
+                    using var stream = await storageService.GetObjectAsync(input.Bucket, obj.FilePath, cancellationToken).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException($"Unable to download '{obj.FilePath}' from bucket '{input.Bucket}'.");
                     using var fileStream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write);
-                    stream!.WriteTo(fileStream);
+                    await stream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
                 }
             }
 
@@ -520,8 +546,9 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
 
                     if (process.ExitCode != 0)
                     {
-                        _logger.ErrorSettingDirectoryPermission(path, Event.TaskPluginArguments[Keys.User]);
-                        throw new SetPermissionException($"chown command exited with code {process.ExitCode}");
+                        var permissionException = new SetPermissionException($"chown command exited with code {process.ExitCode}");
+                        _logger.ErrorSettingDirectoryPermission(permissionException, path, Event.TaskPluginArguments[Keys.User]);
+                        throw permissionException;
                     }
                 }
             }

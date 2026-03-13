@@ -65,6 +65,7 @@ namespace Monai.Deploy.WorkflowManager.TaskManager.Podman
             var json = JsonSerializer.Serialize(request, s_jsonOptions);
             using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
+            // The path targets the libpod API at v4.0.0 — the minimum supported Podman version for CDI device support.
             using var response = await httpClient.PostAsync("/v4.0.0/libpod/containers/create", content, cancellationToken).ConfigureAwait(false);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
